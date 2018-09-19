@@ -378,6 +378,12 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
         return 0;
     }
 
+    if (level < 0) {
+        level = 0;
+    } else if (level > ISAL_DEF_MAX_LEVEL + 1) {
+        level = ISAL_DEF_MAX_LEVEL + 1;
+    }
+
     uint8_t *dst = (uint8_t*)_dst;
 
     if (level == 0) {
@@ -398,11 +404,37 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
         stream.next_in = src;
         stream.avail_out = *dlen - BLOCK_FOOTER_LENGTH - BLOCK_HEADER_LENGTH;
         stream.next_out = dst + BLOCK_HEADER_LENGTH;
+
+        switch (level) {
+            case 1:
+                stream.level = 0;
+                stream.level_buf = NULL;
+                stream.level_buf_size = 0;
+                break;
+            case 2:
+                stream.level = 1;
+                stream.level_buf = (uint8_t*)malloc(ISAL_DEF_LVL1_DEFAULT);
+                stream.level_buf_size = ISAL_DEF_LVL1_DEFAULT;
+                break;
+            case 3:
+                stream.level = 2;
+                stream.level_buf = (uint8_t*)malloc(ISAL_DEF_LVL2_DEFAULT);
+                stream.level_buf_size = ISAL_DEF_LVL2_DEFAULT;
+                break;
+            case 4:
+                stream.level = 3;
+                stream.level_buf = (uint8_t*)malloc(ISAL_DEF_LVL3_DEFAULT);
+                stream.level_buf_size = ISAL_DEF_LVL3_DEFAULT;
+                break;
+        }
+
         int ret = isal_deflate_stateless(&stream);
         if (ret != COMP_OK) {
             hts_log_error("Failed to compress: %d", ret);
         }
         *dlen = *dlen - stream.avail_out;
+
+        free(stream.level_buf);
     }
 
     // write the header
