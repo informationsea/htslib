@@ -562,7 +562,28 @@ static int deflate_block(BGZF *fp, int block_length)
     return comp_size;
 }
 
-#ifdef HAVE_LIBDEFLATE
+#ifdef HAVE_LIBISAL
+
+static int bgzf_uncompress(uint8_t *dst, size_t *dlen, const uint8_t *src, size_t slen) {
+    struct inflate_state state;
+
+    isal_inflate_init(&state);
+    state.avail_in = slen;
+    state.next_in = src;
+    state.avail_out = *dlen;
+    state.next_out = dst;
+
+    int ret = isal_inflate(&state);
+    if (ret != ISAL_DECOMP_OK) {
+        hts_log_error("Inflate error: %d", ret);
+        return -1;
+    }
+    *dlen = *dlen - state.avail_out;
+
+    return 0;
+}
+
+#elif defined(HAVE_LIBDEFLATE)
 
 static int bgzf_uncompress(uint8_t *dst, size_t *dlen, const uint8_t *src, size_t slen) {
     struct libdeflate_decompressor *z = libdeflate_alloc_decompressor();
