@@ -39,6 +39,10 @@
 #include <libdeflate.h>
 #endif
 
+#ifdef HAVE_LIBISAL
+#include <isa-l.h>
+#endif
+
 #include "htslib/hts.h"
 #include "htslib/bgzf.h"
 #include "htslib/hfile.h"
@@ -363,7 +367,53 @@ BGZF *bgzf_hopen(hFILE *hfp, const char *mode)
     return fp;
 }
 
-#ifdef HAVE_LIBDEFLATE
+#ifdef HAVE_LIBISAL
+int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int level)
+{
+    if (slen == 0) {
+        // EOF block
+        if (*dlen < 28) return -1;
+        memcpy(_dst, "\037\213\010\4\0\0\0\0\0\377\6\0\102\103\2\0\033\0\3\0\0\0\0\0\0\0\0\0", 28);
+        *dlen = 28;
+        return 0;
+    }
+
+    uint8_t *dst = (uint8_t*)_dst;
+
+    if (level == 0) {
+        // Uncompressed data
+        if (*dlen < slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH) return -1;
+        dst[BLOCK_HEADER_LENGTH] = 1; // BFINAL=1, BTYPE=00; see RFC1951
+        u16_to_le(slen,  &dst[BLOCK_HEADER_LENGTH+1]); // length
+        u16_to_le(~slen, &dst[BLOCK_HEADER_LENGTH+3]); // ones-complement length
+        memcpy(dst + BLOCK_HEADER_LENGTH+5, src, slen);
+        *dlen = slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH;
+
+    } else {
+        struct isal_zstream stream;
+        isal_deflate_init(&stream);
+        stream.end_of_stream = 1;
+        stream.flush = NO_FLUSH;
+        //stream.gzip_flag = IGZIP_GZIP_NO_HDR;
+        stream.avail_in = slen;
+        stream.next_in = src;
+        stream.avail_out = *dlen - BLOCK_FOOTER_LENGTH - BLOCK_HEADER_LENGTH;
+        stream.next_out = dst + BLOCK_HEADER_LENGTH;
+        isal_deflate(&stream);
+        *dlen = *dlen - stream.avail_out;
+    }
+
+    // write the header
+    memcpy(dst, g_magic, BLOCK_HEADER_LENGTH); // the last two bytes are a place holder for the length of the block
+    packInt16(&dst[16], *dlen - 1); // write the compressed length; -1 to fit 2 bytes
+
+    // write the footer
+    uint32_t crc = crc32_gzip_refl(0, src, slen);
+    packInt32((uint8_t*)&dst[*dlen - 8], crc);
+    packInt32((uint8_t*)&dst[*dlen - 4], slen);
+    return 0;
+}
+#elif defined(HAVE_LIBDEFLATE)
 int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int level)
 {
     if (slen == 0) {
