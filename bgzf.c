@@ -378,12 +378,6 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
         return 0;
     }
 
-    if (level < 0) {
-        level = 0;
-    } else if (level > ISAL_DEF_MAX_LEVEL + 1) {
-        level = ISAL_DEF_MAX_LEVEL + 1;
-    }
-
     uint8_t *dst = (uint8_t*)_dst;
 
     if (level == 0) {
@@ -422,6 +416,7 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
                 stream.level_buf_size = ISAL_DEF_LVL2_DEFAULT;
                 break;
             case 4:
+            default:
                 stream.level = 3;
                 stream.level_buf = (uint8_t*)malloc(ISAL_DEF_LVL3_DEFAULT);
                 stream.level_buf_size = ISAL_DEF_LVL3_DEFAULT;
