@@ -388,10 +388,9 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
         u16_to_le(~slen, &dst[BLOCK_HEADER_LENGTH+3]); // ones-complement length
         memcpy(dst + BLOCK_HEADER_LENGTH+5, src, slen);
         *dlen = slen+5 + BLOCK_HEADER_LENGTH + BLOCK_FOOTER_LENGTH;
-
     } else {
         struct isal_zstream stream;
-        isal_deflate_init(&stream);
+        isal_deflate_stateless_init(&stream);
         stream.end_of_stream = 1;
         stream.flush = NO_FLUSH;
         //stream.gzip_flag = IGZIP_GZIP_NO_HDR;
@@ -399,7 +398,10 @@ int bgzf_compress(void *_dst, size_t *dlen, const void *src, size_t slen, int le
         stream.next_in = src;
         stream.avail_out = *dlen - BLOCK_FOOTER_LENGTH - BLOCK_HEADER_LENGTH;
         stream.next_out = dst + BLOCK_HEADER_LENGTH;
-        isal_deflate(&stream);
+        int ret = isal_deflate_stateless(&stream);
+        if (ret != COMP_OK) {
+            hts_log_error("Failed to compress: %d", ret);
+        }
         *dlen = *dlen - stream.avail_out;
     }
 
